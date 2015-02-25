@@ -1,2 +1,2 @@
-# movie-Collaborative-filter
-collaboration based movie recommendation filter
+Collaborative-filter
+collaboration based recommendation filter
