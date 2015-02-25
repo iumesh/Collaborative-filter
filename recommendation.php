@@ -1,79 +1,67 @@
 <?php
-/**
- * Created by JetBrains PhpStorm.
- * User: umesh
- * Date: 11/22/13
- * Time: 8:34 AM
- * To change this template use File | Settings | File Templates.
- */
-class Filtering{
+/*
+    This class is to provide recommandation using pearson corealtion 
+    The data format 
+    $data = array(
+        "$person1" = array("Key1"=>Rating1, "Key2"=>Rating2, .........)
+        "$person2" = array("Key1"=>Rating1, "Key2"=>Rating2, .........)
+        "$person3" = array("Key1"=>Rating1, "Key2"=>Rating2, .........)
+        .
+        .
+        .
+        .
+    )
+*/
 
-    /***************Jaccard coefficient***********************************/
-    public function similarityJaccard($person1,$person2){
-        $sim = array();
-        foreach($person1 as $key=>$value){
-            if(array_key_exists($key,$person2)){
-                $sim[$key]=1;
-            }
-        }
-        $num=count($sim);
-        $den=count($person1);
-        $result = $num/$den;
-        return $result;
-    }
+class Recommendation{
 
     /***********Pearson Correlation Similarity Score*****************************/
-    public function similarityPearson($person1,$person2){
-        $sim = array();
-        /*********Finding common preferences**********************************/
-        foreach($person1 as $key=>$value){
-            if(array_key_exists($key,$person2)){
-                $sim[$key]=1;
-            }
+     public function similarityDistance($preferences, $person1, $person2){
+        $similar = array();
+        $sum = 0;
+    
+        foreach($preferences[$person1] as $key=>$value){
+            if(array_key_exists($key, $preferences[$person2]))
+                $similar[$key] = 1;
         }
-        $counts=count($sim);
-        if($counts==0) {
+        
+        if(count($similar) == 0){
             return 0;
         }
-        else{
-            $sum1=0;
-            $sum2=0;
-            $sumSquare1=0;
-            $sumSquare2=0;
-            $sumProduct=0;
-            foreach($sim as $k=>$v){
-
-                /***********Adding up all preferences*************************/
-                $sum1 += $person1[$k];
-                $sum2 += $person2[$k];
-                /************Sum up the squares*****************************/
-                $sumSquare1 += ($person1[$k]*$person1[$k]);
-                $sumSquare2 += ($person2[$k]*$person2[$k]);
-                /***********Sum up the products ****************************/
-                $sumProduct += (($person1[$k])*($person2[$k]));
-            }
-            /**********Pearson Score ************************************/
-            $num=$sumProduct-($sum1*$sum2/$counts);
-            $den=sqrt(($sumSquare1-(($sum1*$sum1)/$counts))*($sumSquare2-(($sum2*$sum2)/$counts)));
-            if($den==0){
-                return 0;
-            }
-            else{
-                $r=$num/$den;
-                return $r;
-            }
+        
+        foreach($preferences[$person1] as $key=>$value){
+            if(array_key_exists($key, $preferences[$person2]))
+                $sum = $sum + pow($value - $preferences[$person2][$key], 2);
         }
+        
+        return  1/(1 + sqrt($sum));     
     }
 
-    /***********Ranking the critics****************************************************/
-    public function topMatches($person1,$list){
-        $scores=array();
-        foreach($list as $value){
-            $similarity=$this->similarityPearson($person1,$value);
-            $scores[$value]=$similarity;
+    /***********Ranking the matches****************************************************/
+      public function topMatches($preferences, $person){
+        $score = array();
+            foreach($preferences as $otherPerson=>$values){
+                if($otherPerson !== $person){
+                    $sim = $this->similarityDistance($preferences, $person, $otherPerson);
+                    if($sim > 0){
+                        $score[$otherPerson] = $sim;
+                    }
+                }
+            }
+        array_multisort($score, SORT_DESC);
+        return $score;
+    }
+
+
+    
+    public function transformPreferences($preferences){
+        $result = array();
+        foreach($preferences as $otherPerson => $values){
+            foreach($values as $key => $value){
+                $result[$key][$otherPerson] = $value;
+            }
         }
-        $scores=sort($scores);
-        return $scores;
+        return $result;
     }
     /*******Faults
      *It can turn up reviewers who haven't reviewed the movies that i have liked
@@ -95,39 +83,39 @@ class Filtering{
     *************************/
 
     /********Get Recommendations************************************************/
-    public function getRecommendations($person1,$userLists,$similarityList){
-        $simSum=array();
-        $total=array();
-        foreach($userLists as $otherPerson=>$movieList){
-            if($otherPerson==$person1){
-                continue;
+        public function getRecommendations($preferences, $person){
+        $total = array();
+        $simSums = array();
+        $ranks = array();
+        $sim = 0;
+        
+        foreach($preferences as $otherPerson=>$values){
+            if($otherPerson != $person){
+                $sim = $this->similarityDistance($preferences, $person, $otherPerson);
             }
-            if($similarityList[$otherPerson]<=0){
-                continue;
+            
+            if($sim > 0){
+                foreach($preferences[$otherPerson] as $key=>$value){
+                    if(!array_key_exists($key, $preferences[$person])){
+                        if(!array_key_exists($key, $total)) {
+                            $total[$key] = 0;
+                        }
+                        $total[$key] += $preferences[$otherPerson][$key] * $sim;
+                        if(!array_key_exists($key, $simSums)){
+                            $simSums[$key] = 0;
+                        }
+                        $simSums[$key] += $sim;
+                    }
+                }    
             }
-            foreach($movieList as $someMovie=>$someRating){
-                if(isset($person1[$someMovie])){
-                    continue;
-                }
-                else{
-                    if(!isset($total[$someMovie])){
-                        $total[$someMovie]=0;
-                    }
-                    $total[$someMovie]+=$someRating*$similarityList[$otherPerson];
-                    if(!isset($simSum[$someMovie])){
-                        $simSum[$someMovie]=0;
-                    }
-                    $simSum[$someMovie]+=$similarityList[$otherPerson];
-                }
-            }//for each movie
-        }//for each person
-        //generate normalized list
-        foreach($total as $anyMovie=>$anyValue){
-            $anyValue=$anyValue/$simSum[$anyMovie];
         }
-        arsort($total);
-        return $total;
+        foreach($total as $key=>$value){
+            $ranks[$key] = $value / $simSums[$key];
+        } 
+    array_multisort($ranks, SORT_DESC);    
+    return $ranks;
     }
+   
 }
 
 ?>
