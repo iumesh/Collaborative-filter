@@ -1,2 +1,2 @@
-Collaborative-filter
-collaboration based recommendation filter
+<h1>Collaborative-filter</h1>
+Collaboration based recommendation filter
